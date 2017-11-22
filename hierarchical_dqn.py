@@ -63,18 +63,17 @@ class HierarchicalDqnAgent(object):
         if self._meta_controller_state_fn:
             returned_state = self._meta_controller_state_fn(state, self._original_state)
 
-        return returned_state
+        return np.copy(returned_state)
 
     def get_controller_state(self, state, subgoal_index):
+        # Concatenates the environment state with the current subgoal.
+
         # curr_subgoal is a 1-hot vector indicating the current subgoal selected by the meta-controller.
-        curr_subgoal = self._subgoals[subgoal_index]
+        curr_subgoal = np.array(self._subgoals[subgoal_index])
 
         # Concatenate the environment state with the subgoal.
-        controller_state = np.array(state[0])
-
-        for i in xrange(len(curr_subgoal)):
-            controller_state.append(curr_subgoal[i])
-        controller_state = np.array([controller_state])
+        controller_state = np.array(state)
+        controller_state = np.concatenate((controller_state, curr_subgoal), axis=0)
 
         return np.copy(controller_state)
 
@@ -108,29 +107,29 @@ class HierarchicalDqnAgent(object):
         """
 
         # Compute the controller state, reward, next state, and terminal.
-        intrinsic_state = self.get_controller_state(state, self._curr_subgoal)
-        intrinsic_next_state = self.get_controller_state(next_state, self._curr_subgoal)
+        intrinsic_state = np.copy(self.get_controller_state(state, self._curr_subgoal))
+        intrinsic_next_state = np.copy(self.get_controller_state(next_state, self._curr_subgoal))
         intrinsic_reward = self.intrinsic_reward(next_state, self._curr_subgoal)
         subgoal_completed = self.subgoal_completed(next_state, self._curr_subgoal)
         intrinsic_terminal = subgoal_completed or terminal
 
         # Store the controller transition in memory.
-        self._controller.store(np.copy(intrinsic_state), action,
-            intrinsic_reward, np.copy(intrinsic_next_state), intrinsic_terminal, eval)
+        self._controller.store(intrinsic_state, action,
+            intrinsic_reward, intrinsic_next_state, intrinsic_terminal, eval)
 
         self._meta_controller_reward += reward
-        self._intrinsic_time_step += 1
 
         if terminal and not eval:
             self._episode += 1
 
         if subgoal_completed or terminal:
-            meta_controller_state = np.copy(self._meta_controller_state)
-            next_meta_controller_state = self.get_meta_controller_state(next_state)
 
             # Store the meta-controller transition in memory.
-            self._meta_controller.store(np.copy(meta_controller_state), self._curr_subgoal,
-                self._meta_controller_reward, np.copy(next_meta_controller_state),
+            meta_controller_state = np.copy(self._meta_controller_state)
+            next_meta_controller_state = np.copy(self.get_meta_controller_state(next_state))
+            
+            self._meta_controller.store(meta_controller_state, self._curr_subgoal,
+                self._meta_controller_reward, next_meta_controller_state,
                 terminal, eval)
 
             # Reset the current meta-controller state and current subgoal to be None
@@ -151,6 +150,7 @@ class HierarchicalDqnAgent(object):
            Returns:
             action: a sampled primitive action.
         """
+        self._intrinsic_time_step += 1
 
         # If the meta-controller state is None, it means that either this is a new episode 
         # or a subgoal has just been completed.
