@@ -50,24 +50,9 @@ class DqnAgent(object):
             self.sess.run(tf.global_variables_initializer())
 
     def _q_network(self, state):
-        print "Controller!"
-        # Three convolutional layers
-        # conv1 = tf.contrib.layers.conv2d(
-        #    state, 32, 8, 4, activation_fn=tf.nn.relu)
-        # conv2 = tf.contrib.layers.conv2d(
-        #    conv1, 64, 4, 2, activation_fn=tf.nn.relu)
-        # conv3 = tf.contrib.layers.conv2d(
-        #    conv2, 64, 3, 1, activation_fn=tf.nn.relu)
 
         layer1 = tf.contrib.layers.fully_connected(state, 64, activation_fn=tf.nn.relu)
-        # layer2 = tf.contrib.layers.fully_connected(layer1, 100, activation_fn=tf.nn.sigmoid)
-        # layer3 = tf.contrib.layers.fully_connected(layer2, 100, activation_fn=tf.nn.relu)
         q_values = tf.contrib.layers.fully_connected(layer1, self._num_actions, activation_fn=None)
-
-        # Fully connected layers
-        # flattened = tf.contrib.layers.flatten(conv3)
-        # fc1 = tf.contrib.layers.fully_connected(flattened, 512)
-        # q_values = tf.contrib.layers.fully_connected(fc1, self._num_actions)
 
         return q_values
 
@@ -85,30 +70,21 @@ class DqnAgent(object):
             self._picked_actions = tf.placeholder(shape=[None, 2], dtype=tf.int32)
             self._td_targets = tf.placeholder(shape=[None], dtype=tf.float32)
             self._q_values_pred = tf.gather_nd(self._q_values, self._picked_actions)
-            # self._losses = tf.square(self._q_values_pred, self._td_targets)
             self._losses = clipped_error(self._q_values_pred - self._td_targets)
             self._loss = tf.reduce_mean(self._losses)
 
             self.optimizer = tf.train.RMSPropOptimizer(self._learning_rate)
-            # self.optimizer = tf.train.RMSPropOptimizer(self._learning_rate, 0.99, 0.0, 1e-6)
-            # self.optimizer = tf.train.AdamOptimizer(0.0001)
-            # self.optimizer = tf.train.GradientDescentOptimizer(0.1)
 
             grads_and_vars = self.optimizer.compute_gradients(self._loss, tf.trainable_variables())
 
             grads = [gv[0] for gv in grads_and_vars]
             params = [gv[1] for gv in grads_and_vars]
-
             grads = tf.clip_by_global_norm(grads, 5.0)[0]
 
-            # clipped_grads_and_vars = [(
-            #    tf.clip_by_norm(grad, 5.0), var) for grad, var in grads_and_vars]
             clipped_grads_and_vars = zip(grads, params)
             self.train_op = self.optimizer.apply_gradients(clipped_grads_and_vars,
                 global_step=tf.contrib.framework.get_global_step())
 
-            # self.train_op = self.optimizer.minimize(self._loss,
-            #    global_step=tf.contrib.framework.get_global_step())
         with tf.name_scope('target_network_update'):
             q_network_params = [t for t in tf.trainable_variables() if t.name.startswith(
                 'q_network')]
@@ -145,25 +121,11 @@ class DqnAgent(object):
 
     def update(self):
         states, actions, rewards, next_states, terminals = self._replay_buffer.sample()
-        '''
-        print "Update!"
-        print states
-        print actions
-        print rewards
-        print terminals
-        print ""
-        '''
-
         actions = zip(np.arange(len(actions)), actions)
 
         if len(states) > 0:
             next_states_q_values = self.sess.run(self._target_q_values, {self._state: next_states})
-
-            # print "Next States Q Values:"
-            # print next_states_q_values
-
             next_states_max_q_values = np.max(next_states_q_values, axis=1)
-
             td_targets = rewards + (1 - terminals) * self.DISCOUNT * next_states_max_q_values
 
             feed_dict = {self._state: states,
@@ -174,9 +136,6 @@ class DqnAgent(object):
 
         # Update the target q-network.
         if not self._current_time_step % self.TARGET_UPDATE:
-            # print self._current_time_step
-            # print self._epsilons[min(self._current_time_step, self._epsilon_decay_steps - 1)]
-            # print "Updating target!"
             self.sess.run(self.target_update_ops)
 
 def clipped_error(x):
