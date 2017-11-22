@@ -35,14 +35,15 @@ class HierarchicalDqnAgent(object):
             check_subgoal_fn: function that checks if agent has satisfied a particular subgoal.
         """
 
-        self._meta_controller = DqnAgent(state_dims=state_sizes[0][0],
+        # Note: States for meta-controller and controller are assumed to be 1-dimensional.
+        self._meta_controller = DqnAgent(state_dims=state_sizes[0],
             num_actions=num_subgoals,
             learning_rate=learning_rates[0],
             epsilon_end=0.01)
 
         self._controller = DqnAgent(learning_rate=learning_rates[1],
                 num_actions=num_primitive_actions,
-                state_dims=[state_sizes[1][0] + num_subgoals],
+                state_dims=[state_sizes[1] + num_subgoals],
                 epsilon_end=0.01)
 
         self._subgoals = subgoals
@@ -128,7 +129,7 @@ class HierarchicalDqnAgent(object):
             # Store the meta-controller transition in memory.
             self._meta_controller.store(np.copy(meta_controller_state), self._curr_subgoal,
                 self._meta_controller_reward, np.copy(next_meta_controller_state),
-                terminal, eval, reward)
+                terminal, eval)
 
             # Reset the current meta-controller state and current subgoal to be None
             # since the current subgoal is finished. Also reset the meta-controller's reward.
