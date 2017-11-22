@@ -28,6 +28,7 @@ class HierarchicalDqnAgent(object):
            Args:
             learning_rates: learning rates of the meta-controller and controller agents.
             state_sizes: state sizes of the meta-controller and controller agents.
+                         State sizes are assumed to be 1-dimensional.
             subgoals: array of subgoals for the meta-controller.
             num_subgoals: the action space of the meta-controller.
             num_primitive_actions: the action space of the controller.
@@ -35,7 +36,6 @@ class HierarchicalDqnAgent(object):
             check_subgoal_fn: function that checks if agent has satisfied a particular subgoal.
         """
 
-        # Note: States for meta-controller and controller are assumed to be 1-dimensional.
         self._meta_controller = DqnAgent(state_dims=state_sizes[0],
             num_actions=num_subgoals,
             learning_rate=learning_rates[0],
@@ -53,7 +53,6 @@ class HierarchicalDqnAgent(object):
         self._check_subgoal_fn = check_subgoal_fn
 
         self._meta_controller_state = None
-        self._next_meta_controller_state = None
         self._curr_subgoal = None
         self._meta_controller_reward = 0
         self._intrinsic_time_step = 0
@@ -67,23 +66,27 @@ class HierarchicalDqnAgent(object):
         return returned_state
 
     def get_controller_state(self, state, subgoal_index):
+        # curr_subgoal is a 1-hot vector indicating the current subgoal selected by the meta-controller.
         curr_subgoal = self._subgoals[subgoal_index]
 
         # Concatenate the environment state with the subgoal.
-        controller_state = list(state[0])
+        controller_state = np.array(state[0])
+
         for i in xrange(len(curr_subgoal)):
             controller_state.append(curr_subgoal[i])
         controller_state = np.array([controller_state])
-        # print controller_state
+
         return np.copy(controller_state)
 
     def intrinsic_reward(self, state, subgoal_index):
+        # Intrinsically rewards the controller - this is the critic in the h-DQN algorithm.
         if self.subgoal_completed(state, subgoal_index):
             return 1
         else:
             return self.INTRINSIC_STEP_COST
 
     def subgoal_completed(self, state, subgoal_index):
+        # Checks whether the controller has completed the currently specified subgoal.
         if self._check_subgoal_fn is None:
             return state == self._subgoals[subgoal_index]
         else:
@@ -122,7 +125,6 @@ class HierarchicalDqnAgent(object):
             self._episode += 1
 
         if subgoal_completed or terminal:
-
             meta_controller_state = np.copy(self._meta_controller_state)
             next_meta_controller_state = self.get_meta_controller_state(next_state)
 
@@ -133,11 +135,6 @@ class HierarchicalDqnAgent(object):
 
             # Reset the current meta-controller state and current subgoal to be None
             # since the current subgoal is finished. Also reset the meta-controller's reward.
-            self._next_meta_controller_state = np.copy(next_meta_controller_state)
-
-            if terminal:
-                self._next_meta_controller_state = None
-
             self._meta_controller_state = None
             self._curr_subgoal = None
             self._meta_controller_reward = 0
@@ -152,15 +149,13 @@ class HierarchicalDqnAgent(object):
             state: the current environment state.
 
            Returns:
-            action: a primitive action.
+            action: a sampled primitive action.
         """
+
+        # If the meta-controller state is None, it means that either this is a new episode 
+        # or a subgoal has just been completed.
         if self._meta_controller_state is None:
-
-            if self._next_meta_controller_state is not None:
-                self._meta_controller_state = self._next_meta_controller_state
-            else:
-                self._meta_controller_state = self.get_meta_controller_state(state)
-
+            self._meta_controller_state = self.get_meta_controller_state(state)
             self._curr_subgoal = self._meta_controller.sample([self._meta_controller_state])
 
         controller_state = self.get_controller_state(state, self._curr_subgoal)
@@ -180,13 +175,10 @@ class HierarchicalDqnAgent(object):
             action: the controller's greedy primitive action.
         """
 
+        # If the meta-controller state is None, it means that either this is a new episode 
+        # or a subgoal has just been completed.
         if self._meta_controller_state is None:
-
-            if self._next_meta_controller_state is not None:
-                self._meta_controller_state = self._next_meta_controller_state
-            else:
-                self._meta_controller_state = self.get_meta_controller_state(state)
-
+            self._meta_controller_state = self.get_meta_controller_state(state)
             self._curr_subgoal = self._meta_controller.best_action([self._meta_controller_state])
 
         controller_state = self.get_controller_state(state, self._curr_subgoal)
